@@ -1,0 +1,9 @@
+streamlit>=1.25
+pandas>=1.5
+numpy
+plotly
+pydeck
+geopandas
+folium
+shapely
+scikit-learn
