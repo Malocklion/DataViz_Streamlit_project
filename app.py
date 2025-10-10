@@ -102,14 +102,19 @@ if df is not None:
     # --- 3. ANALYSE EXPLORATOIRE ET INTERACTIONS ---
     st.markdown('<h2 class="section-header">🔍 Analyse Exploratoire</h2>', unsafe_allow_html=True)
     st.sidebar.markdown("## 🎛️ Filtres Interactifs")
-    years_available = sorted(df['ANNEE'].unique())
-    years_display = ["Toutes"] + years_available
-    selected_year = st.sidebar.selectbox("📅 Année d'analyse", options=years_display, index=0)
 
-    if selected_year == "Toutes":
-        year_filter = df['ANNEE'].isin(years_available)
+    # -- Filtre TRIMESTRE (au lieu d'ANNEE) --
+    quarters_available = sorted(df['TRIMESTRE'].unique())
+    quarter_label_map = {q: f"T{q.quarter} {q.year}" for q in quarters_available}
+    quarter_labels = ["Tous les trimestres"] + [quarter_label_map[q] for q in quarters_available]
+
+    selected_quarter_label = st.sidebar.selectbox("📅 Trimestre d'analyse", options=quarter_labels, index=0)
+    if selected_quarter_label == "Tous les trimestres":
+        period_filter = df['TRIMESTRE'].isin(quarters_available)
     else:
-        year_filter = df['ANNEE'] == selected_year
+        label_to_period = {v: k for k, v in quarter_label_map.items()}
+        selected_period = label_to_period[selected_quarter_label]
+        period_filter = df['TRIMESTRE'] == selected_period
 
     departements = sorted(df['DEPARTEMENT'].unique())
     departements_display = ["Tous"] + departements
@@ -125,7 +130,7 @@ if df is not None:
 
     min_vehicles = st.sidebar.slider("🚗 Taille minimale du parc automobile", min_value=0, max_value=int(df['NB_VP'].max()), value=100, step=50)
     df_filtered = df[
-        year_filter &
+        period_filter &
         (df['DEPARTEMENT'].isin(filtered_departements)) &
         (df['NB_VP'] >= min_vehicles)
     ].copy()
@@ -155,16 +160,27 @@ if df is not None:
 
         # --- 4. INSIGHTS ET VISUALISATIONS ---
         st.markdown('<h2 class="section-header">💡 Insights et Visualisations</h2>', unsafe_allow_html=True)
-        # 4.1 Evolution temporelle
+        # 4.1 Évolution temporelle (par trimestre)
         st.markdown("### 📈 Évolution Temporelle de la Transition")
-        temporal_data = df.groupby(['ANNEE']).agg({'NB_VP': 'sum', 'NB_RECHARGEABLES_TOTAL': 'sum'}).reset_index()
-        temporal_data['PART_ELECTRIQUE'] = np.where(temporal_data['NB_VP'] > 0, temporal_data['NB_RECHARGEABLES_TOTAL'] / temporal_data['NB_VP'] * 100, 0)
-        fig_temporal = make_subplots(rows=2, cols=1, subplot_titles=('Évolution du Parc Automobile', 'Taux d\'Adoption des Véhicules Électriques'), specs=[[{"secondary_y": False}], [{"secondary_y": False}]])
-        fig_temporal.add_trace(go.Scatter(x=temporal_data['ANNEE'], y=temporal_data['NB_VP'], mode='lines+markers', name='Parc Total', line=dict(color='blue')), row=1, col=1)
-        fig_temporal.add_trace(go.Scatter(x=temporal_data['ANNEE'], y=temporal_data['NB_RECHARGEABLES_TOTAL'], mode='lines+markers', name='Véhicules Électriques', line=dict(color='green')), row=1, col=1)
-        fig_temporal.add_trace(go.Scatter(x=temporal_data['ANNEE'], y=temporal_data['PART_ELECTRIQUE'], mode='lines+markers', name='Taux d\'Adoption (%)', line=dict(color='orange', width=3)), row=2, col=1)
-        fig_temporal.update_layout(height=600, showlegend=True, title_text="Dynamique Temporelle de la Transition Énergétique")
-        fig_temporal.update_xaxes(title_text="Année", row=2, col=1)
+        temporal_data = df.groupby(['TRIMESTRE']).agg({'NB_VP': 'sum', 'NB_RECHARGEABLES_TOTAL': 'sum'}).reset_index()
+        temporal_data['PART_ELECTRIQUE'] = np.where(
+            temporal_data['NB_VP'] > 0,
+            temporal_data['NB_RECHARGEABLES_TOTAL'] / temporal_data['NB_VP'] * 100,
+            0
+        )
+        temporal_data = temporal_data.sort_values('TRIMESTRE')
+        temporal_data['TRI_LABEL'] = temporal_data['TRIMESTRE'].apply(lambda p: f"T{p.quarter} {p.year}")
+
+        fig_temporal = make_subplots(
+            rows=2, cols=1,
+            subplot_titles=('Évolution du Parc Automobile', 'Taux d\'Adoption des Véhicules Électriques'),
+            specs=[[{"secondary_y": False}], [{"secondary_y": False}]]
+        )
+        fig_temporal.add_trace(go.Scatter(x=temporal_data['TRI_LABEL'], y=temporal_data['NB_VP'], mode='lines+markers', name='Parc Total', line=dict(color='blue')), row=1, col=1)
+        fig_temporal.add_trace(go.Scatter(x=temporal_data['TRI_LABEL'], y=temporal_data['NB_RECHARGEABLES_TOTAL'], mode='lines+markers', name='Véhicules Électriques', line=dict(color='green')), row=1, col=1)
+        fig_temporal.add_trace(go.Scatter(x=temporal_data['TRI_LABEL'], y=temporal_data['PART_ELECTRIQUE'], mode='lines+markers', name='Taux d\'Adoption (%)', line=dict(color='orange', width=3)), row=2, col=1)
+        fig_temporal.update_layout(height=600, showlegend=True, title_text="Dynamique Trimestrielle de la Transition")
+        fig_temporal.update_xaxes(title_text="Trimestre", row=2, col=1)
         fig_temporal.update_yaxes(title_text="Nombre de Véhicules", row=1, col=1)
         fig_temporal.update_yaxes(title_text="Taux d'Adoption (%)", row=2, col=1)
         st.plotly_chart(fig_temporal, use_container_width=True)
@@ -347,13 +363,16 @@ if df is not None:
             - 📈 Investissement dans les zones à forte croissance
             - 🔄 Solutions de recyclage des batteries
             """)
+        # 🌍 Projection 2030 basée sur le dernier écart trimestriel
         st.markdown("### 🌍 Impact sur la Transition Énergétique")
-        current_rate = temporal_data['PART_ELECTRIQUE'].iloc[-1] if len(temporal_data) > 0 else 0
-        if isinstance(selected_year, int) and len(temporal_data) > 1:
-            annual_growth = (temporal_data['PART_ELECTRIQUE'].iloc[-1] - temporal_data['PART_ELECTRIQUE'].iloc[-2])
-            projected_2030 = min(current_rate + (annual_growth * (2030 - selected_year)), 100)
+        current_rate = temporal_data['PART_ELECTRIQUE'].iloc[-1] if len(temporal_data) > 0 else 0.0
+        if len(temporal_data) > 1:
+            last_delta = temporal_data['PART_ELECTRIQUE'].iloc[-1] - temporal_data['PART_ELECTRIQUE'].iloc[-2]
+            last_period = df['TRIMESTRE'].max()
+            quarters_left = max(0, (2030 - last_period.year) * 4 + (4 - last_period.quarter))
+            projected_2030 = float(np.clip(current_rate + last_delta * quarters_left, 0, 100))
         else:
-            projected_2030 = current_rate
+            projected_2030 = float(current_rate)
         st.markdown(f"""
         **Projection 2030 (basée sur la tendance actuelle) :**
         - Taux d'adoption actuel : **{current_rate:.1f}%**
@@ -372,11 +391,14 @@ if df is not None:
             st.markdown("### Données Filtrées")
             st.dataframe(df_filtered)
             csv = df_filtered.to_csv(index=False)
+            # Export CSV: suffix par trimestre
+            csv = df_filtered.to_csv(index=False)
+            export_suffix = "tous_trimestres" if selected_quarter_label == "Tous les trimestres" else selected_quarter_label.replace(" ", "_")
             st.download_button(
                 label="📥 Télécharger les données filtrées (CSV)",
                 data=csv,
-                file_name=f'vehicules_electriques_{selected_year}.csv',
-                mime='text/csv'
+                file_name=f"vehicules_electriques_{export_suffix}.csv",
+                mime="text/csv"
             )
     else:
         st.warning("Aucune donnée ne correspond aux filtres sélectionnés. Veuillez ajuster vos critères.")
