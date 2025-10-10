@@ -103,18 +103,21 @@ if df is not None:
     st.markdown('<h2 class="section-header">🔍 Analyse Exploratoire</h2>', unsafe_allow_html=True)
     st.sidebar.markdown("## 🎛️ Filtres Interactifs")
 
-    # -- Filtre TRIMESTRE (au lieu d'ANNEE) --
+    # -- Filtre TRIMESTRE (sans option 'Tous') --
     quarters_available = sorted(df['TRIMESTRE'].unique())
-    quarter_label_map = {q: f"T{q.quarter} {q.year}" for q in quarters_available}
-    quarter_labels = ["Tous les trimestres"] + [quarter_label_map[q] for q in quarters_available]
+    quarter_label_map = {q: f"T{int(q.quarter)} {int(q.year)}" for q in quarters_available}
+    quarter_labels = [quarter_label_map[q] for q in quarters_available]
 
-    selected_quarter_label = st.sidebar.selectbox("📅 Trimestre d'analyse", options=quarter_labels, index=0)
-    if selected_quarter_label == "Tous les trimestres":
-        period_filter = df['TRIMESTRE'].isin(quarters_available)
-    else:
-        label_to_period = {v: k for k, v in quarter_label_map.items()}
-        selected_period = label_to_period[selected_quarter_label]
-        period_filter = df['TRIMESTRE'] == selected_period
+    # Par défaut: dernier trimestre disponible
+    selected_quarter_label = st.sidebar.selectbox(
+        "📅 Trimestre d'analyse",
+        options=quarter_labels,
+        index=len(quarter_labels) - 1
+    )
+
+    # Map label -> Period('YYYYQn') pour filtrer
+    label_to_period = {v: k for k, v in quarter_label_map.items()}
+    selected_period = label_to_period[selected_quarter_label]
 
     departements = sorted(df['DEPARTEMENT'].unique())
     departements_display = ["Tous"] + departements
@@ -130,7 +133,7 @@ if df is not None:
 
     min_vehicles = st.sidebar.slider("🚗 Taille minimale du parc automobile", min_value=0, max_value=int(df['NB_VP'].max()), value=100, step=50)
     df_filtered = df[
-        period_filter &
+        (df['TRIMESTRE'] == selected_period) &
         (df['DEPARTEMENT'].isin(filtered_departements)) &
         (df['NB_VP'] >= min_vehicles)
     ].copy()
@@ -144,19 +147,52 @@ if df is not None:
     # --- Indicateurs clés ---
     st.markdown("### 📊 Indicateurs Clés")
     if len(df_filtered) > 0:
+        # Courant (trimestre sélectionné)
+        total_vehicles = int(df_filtered['NB_VP'].sum())
+        total_electric = int(df_filtered['NB_RECHARGEABLES_TOTAL'].sum())
+        weighted_adoption = (total_electric / total_vehicles * 100) if total_vehicles > 0 else 0.0
+        communes_count = int(df_filtered['LIBGEO'].nunique())
+
+        # Comparaison au trimestre précédent (mêmes filtres)
+        prev_period = selected_period - 1
+        df_prev = df[
+            (df['TRIMESTRE'] == prev_period) &
+            (df['DEPARTEMENT'].isin(filtered_departements)) &
+            (df['NB_VP'] >= min_vehicles)
+        ]
+        prev_total_vehicles = int(df_prev['NB_VP'].sum()) if len(df_prev) else 0
+        prev_total_electric = int(df_prev['NB_RECHARGEABLES_TOTAL'].sum()) if len(df_prev) else 0
+        prev_weighted_adoption = (prev_total_electric / prev_total_vehicles * 100) if prev_total_vehicles > 0 else np.nan
+
         col1, col2, col3, col4 = st.columns(4)
-        total_vehicles = df_filtered['NB_VP'].sum()
-        total_electric = df_filtered['NB_RECHARGEABLES_TOTAL'].sum()
-        avg_adoption_rate = df_filtered['PART_ELECTRIQUE'].mean()
-        communes_count = len(df_filtered)
         with col1:
-            st.metric("🚗 Parc Total", f"{total_vehicles:,}", help="Nombre total de véhicules particuliers")
+            st.metric(
+                "🚗 Parc total",
+                f"{total_vehicles:,}",
+                delta=f"{(total_vehicles - prev_total_vehicles):,}" if prev_total_vehicles else None,
+                help="Somme des véhicules particuliers (VP) pour les filtres sélectionnés"
+            )
         with col2:
-            st.metric("⚡ Véhicules Électriques", f"{total_electric:,}", delta=f"{(total_electric/total_vehicles*100):.1f}%" if total_vehicles > 0 else "0%")
+            st.metric(
+                "⚡ Véhicules électriques/rechargeables",
+                f"{total_electric:,}",
+                delta=f"{(total_electric - prev_total_electric):,}" if prev_total_electric else None,
+                help="Somme des VP électriques + hybrides rechargeables"
+            )
         with col3:
-            st.metric("📈 Taux d'Adoption Moyen", f"{avg_adoption_rate:.1f}%", help="Pourcentage moyen de véhicules électriques par commune")
+            delta_pp = None if np.isnan(prev_weighted_adoption) else f"{(weighted_adoption - prev_weighted_adoption):+.2f} %"
+            st.metric(
+                "📈 Taux d'adoption pondéré",
+                f"{weighted_adoption:.2f}%",
+                delta=delta_pp,
+                help="(EV/VP)*100, pondéré par le parc total (plus représentatif qu'une moyenne simple)"
+            )
         with col4:
-            st.metric("🏘️ Communes Analysées", f"{communes_count:,}", help="Nombre de communes dans l'analyse actuelle")
+            st.metric(
+                "🏘️ Communes analysées",
+                f"{communes_count:,}",
+                help="Nombre de communes présentes après filtres"
+            )
 
         # --- 4. INSIGHTS ET VISUALISATIONS ---
         st.markdown('<h2 class="section-header">💡 Insights et Visualisations</h2>', unsafe_allow_html=True)
@@ -215,7 +251,23 @@ if df is not None:
                 orientation='h',
                 color='NB_RECHARGEABLES_TOTAL',
                 color_continuous_scale='Greens',
-                title='Top 10 communes : Taux d\'adoption (%)'
+                title="Top 10 communes : Taux d'adoption (%)",
+                labels={
+                    'PART_ELECTRIQUE': "Taux d'adoption (%)",
+                    'LIBGEO': 'Commune',
+                    'NB_RECHARGEABLES_TOTAL': "Véhicules électriques"
+                }
+            )
+            # même formatage que le bottom
+            fig_top.update_xaxes(
+                tickformat=".2f",
+                ticksuffix="%",
+                title_text="Taux d'adoption (%)"
+            )
+            fig_top.update_traces(
+                text=top_communes['PART_ELECTRIQUE'].map(lambda v: f"{v:.2f}%"),
+                textposition="outside",
+                cliponaxis=False
             )
             fig_top.update_layout(height=400)
             st.plotly_chart(fig_top, use_container_width=True)
@@ -258,7 +310,7 @@ if df is not None:
                 with cols[0]:
                     st.markdown("Taux d'adoption à Paris (%)")
                     st.metric(
-                        label="Any",
+                        label="Taux d'adoption à Paris (%)",
                         value=f"{paris_stats['PART_ELECTRIQUE']:.2f}",
                         delta=f"{(paris_stats['PART_ELECTRIQUE'] - df_filtered['PART_ELECTRIQUE'].mean()):.2f}%",
                         delta_color="normal"
@@ -275,13 +327,32 @@ if df is not None:
         with col2:
             st.markdown("#### 📉 Bottom 10 - Taux d'adoption des véhicules électriques (%)")
             # Regroupe par commune pour avoir des valeurs uniques
-            communes_grouped = df_filtered.groupby('LIBGEO').agg({
+            communes_grouped = df_filtered.groupby('LIBGEO', as_index=False).agg({
                 'PART_ELECTRIQUE': 'mean',
                 'NB_VP': 'sum'
-            }).reset_index()
+            })
 
-            bottom_communes = communes_grouped.nsmallest(10, 'PART_ELECTRIQUE')
-            st.write(f"Nombre de communes uniques dans le bottom : {len(bottom_communes)}")
+            # 1) Les plus faibles > 0
+            bottom_pos = communes_grouped[communes_grouped['PART_ELECTRIQUE'] > 0] \
+                .nsmallest(10, 'PART_ELECTRIQUE')
+
+            # 2) Compléter avec des 0% (ceux qui ont le plus grand parc) si < 10
+            if len(bottom_pos) < 10:
+                needed = 10 - len(bottom_pos)
+                zeros = communes_grouped[communes_grouped['PART_ELECTRIQUE'] == 0] \
+                    .nlargest(needed, 'NB_VP')
+                bottom_communes = pd.concat([bottom_pos, zeros], ignore_index=True)
+            else:
+                bottom_communes = bottom_pos
+
+            # Ordonne dans le bon sens (du plus faible au plus fort)
+            bottom_communes = bottom_communes.sort_values('PART_ELECTRIQUE', ascending=True)
+
+            # Si tout est à 0%, informe l’utilisateur
+            if (bottom_communes['PART_ELECTRIQUE'] == 0).all():
+                st.info("Beaucoup de communes ont un taux d’adoption à 0% pour ce trimestre. "
+                        "Augmentez la taille minimale du parc ou changez de trimestre pour plus de contraste.")
+
             fig_bottom = px.bar(
                 bottom_communes,
                 x='PART_ELECTRIQUE',
@@ -289,8 +360,26 @@ if df is not None:
                 orientation='h',
                 color='NB_VP',
                 color_continuous_scale='Reds',
-                title='Bottom 10 communes : Taux d\'adoption (%)'
+                labels={'PART_ELECTRIQUE': "Taux d'adoption (%)", 'LIBGEO': 'Commune', 'NB_VP': 'Parc total'},
+                title="Bottom 10 communes : Taux d'adoption (%)"
             )
+
+            # Plage X dynamique (plus zoomée si les valeurs sont faibles) + labels sur les barres
+            max_x = float(bottom_communes['PART_ELECTRIQUE'].max() or 0)
+            # un peu d'espace à droite
+            pad = max(0.05, max_x * 0.25)
+            fig_bottom.update_xaxes(
+                range=[0, max_x + pad],       # pas de plancher à 1.0
+                tickformat=".2f",
+                ticksuffix="%",
+                title_text="Taux d'adoption (%)"
+            )
+            fig_bottom.update_traces(
+                text=bottom_communes['PART_ELECTRIQUE'].map(lambda v: f"{v:.2f}%"),
+                textposition="outside",
+                cliponaxis=False
+            )
+
             fig_bottom.update_layout(height=400)
             st.plotly_chart(fig_bottom, use_container_width=True)
 
@@ -393,7 +482,7 @@ if df is not None:
             csv = df_filtered.to_csv(index=False)
             # Export CSV: suffix par trimestre
             csv = df_filtered.to_csv(index=False)
-            export_suffix = "tous_trimestres" if selected_quarter_label == "Tous les trimestres" else selected_quarter_label.replace(" ", "_")
+            export_suffix = selected_quarter_label.replace(" ", "_")  # ex: T4_2024
             st.download_button(
                 label="📥 Télécharger les données filtrées (CSV)",
                 data=csv,
