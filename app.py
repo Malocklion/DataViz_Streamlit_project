@@ -61,6 +61,7 @@ section[data-testid="stSidebar"]{ background:#0a0f1a!important; border-right:1px
 
 a, .markdown-text-container a { color: var(--primary); }
 .small { font-size:.9rem; color:var(--muted); }
+            
 </style>
 """, unsafe_allow_html=True)
 
@@ -164,7 +165,7 @@ else:
                   delta=(f"{(total_ev - prev_total_ev):+,}" if prev_total_ev else None))
     with c3:
         st.metric("📈 Taux d'adoption pondéré", f"{weighted_rate:.2f}%",
-                  delta=(f"{delta_pp_value:+.2f} pp" if delta_pp_value is not None else None))
+                  delta=(f"{delta_pp_value:+.2f} %" if delta_pp_value is not None else None))
     with c4:
         prev_communes = int(df_prev['LIBGEO'].nunique()) if not df_prev.empty else 0
         st.metric("🏘️ Communes analysées", f"{communes_count:,}",
@@ -185,7 +186,16 @@ with tab_problem:
     st.markdown("## Problème")
     st.markdown("- Comment la transition vers les véhicules électriques se traduit-elle à l’échelle territoriale en France, et quelles disparités révèle-t-elle entre les communes ?")
     
-    
+    st.markdown("## Enjeux actuels")
+    st.markdown("""
+La décarbonation du transport routier s’inscrit dans la trajectoire européenne visant à mettre fin aux ventes de véhicules thermiques neufs d’ici 2035. Réduire rapidement les émissions de gaz à effet de serre et les polluants locaux, notamment dans les zones denses, constitue un enjeu à la fois sanitaire et climatique. Si l’adoption du véhicule électrique progresse, elle demeure très contrastée selon les territoires et les profils d’usagers.
+
+Au-delà de la dimension environnementale, la question de l’équité territoriale est essentielle : il s’agit d’éviter un décrochage durable des zones rurales et périurbaines face aux grandes métropoles. Le déploiement des infrastructures de recharge (IRVE), la capacité du réseau électrique, les distances parcourues, le pouvoir d’achat et l’accompagnement aux nouveaux usages (information, médiation, services) sont autant de leviers déterminants.
+
+Enfin, le pilotage public doit viser une allocation optimale des ressources : identifier les territoires à fort parc automobile mais à faible taux d’électrification, articuler les investissements IRVE et les zones à faibles émissions (ZFE) avec les dispositifs d’aide, et assurer un suivi régulier de la dynamique territoriale pour ajuster les politiques en temps réel.  
+Ce tableau de bord a précisément pour ambition d’éclairer ces décisions stratégiques.
+""")
+
 
 # ============ 2) ANALYSIS ============
 with tab_analysis:
@@ -202,10 +212,26 @@ with tab_analysis:
     )
     map_color_col = 'PART_ELECTRIQUE' if map_metric.startswith("Taux") else 'NB_RECHARGEABLES_TOTAL'
 
-    regional = df_current.groupby('DEPARTEMENT', as_index=False).agg(
-        NB_VP=('NB_VP','sum'),
-        NB_RECHARGEABLES_TOTAL=('NB_RECHARGEABLES_TOTAL','sum')
+    # Slider de trimestre pour la carte uniquement
+    map_quarter_label = st.select_slider(
+        "Trimestre de la carte",
+        options=quarter_labels,
+        value=selected_quarter_label,
+        help="Glisse pour changer le trimestre affiché sur la carte."
     )
+    map_period = label_to_period[map_quarter_label]
+
+    # Données de la carte basées sur le trimestre du slider
+    df_map = df[
+        (df['TRIMESTRE'] == map_period) &
+        (df['DEPARTEMENT'].isin(filtered_departements)) &
+        (df['NB_VP'] >= min_vehicles)
+    ].copy()
+
+    regional = df_map.groupby('DEPARTEMENT', as_index=False).agg(
+         NB_VP=('NB_VP','sum'),
+         NB_RECHARGEABLES_TOTAL=('NB_RECHARGEABLES_TOTAL','sum')
+     )
     regional['PART_ELECTRIQUE'] = np.where(
         regional['NB_VP']>0, regional['NB_RECHARGEABLES_TOTAL']/regional['NB_VP']*100, 0
     )
@@ -223,10 +249,36 @@ with tab_analysis:
             color=map_color_col, color_continuous_scale="Viridis" if map_color_col=='PART_ELECTRIQUE' else "Blues",
             labels={'PART_ELECTRIQUE':'Taux adoption (%)', 'NB_RECHARGEABLES_TOTAL':"Véhicules électriques"},
             mapbox_style="carto-positron", zoom=4.5, center={"lat":46.6,"lon":2.5},
-            title=f"Carte — {map_metric}"
+            title=f"Carte — {map_metric} ({map_quarter_label})"
         )
         fig_map.update_layout(margin={"r":0,"t":40,"l":0,"b":0}, height=700)
         st.plotly_chart(fig_map, use_container_width=True)
+
+        # Paragraphe de lecture (hausse + concentration urbaine)
+        rate_map = (regional['NB_RECHARGEABLES_TOTAL'].sum() / regional['NB_VP'].sum() * 100) if regional['NB_VP'].sum() > 0 else 0.0
+        df_map_prev = df[
+            (df['TRIMESTRE'] == (map_period - 1)) &
+            (df['DEPARTEMENT'].isin(filtered_departements)) &
+            (df['NB_VP'] >= min_vehicles)
+        ]
+        if not df_map_prev.empty:
+            prev_ev = df_map_prev['NB_RECHARGEABLES_TOTAL'].sum()
+            prev_vp = df_map_prev['NB_VP'].sum()
+            prev_rate_map = (prev_ev / prev_vp * 100) if prev_vp > 0 else np.nan
+            delta_map_pp = None if np.isnan(prev_rate_map) else (rate_map - prev_rate_map)
+        else:
+            delta_map_pp = None
+
+        top10_share_map = (
+            regional.nlargest(10, 'NB_RECHARGEABLES_TOTAL')['NB_RECHARGEABLES_TOTAL'].sum()
+            / max(1, regional['NB_RECHARGEABLES_TOTAL'].sum())
+        ) * 100
+
+        st.markdown(
+            "Bien que le taux d’adoption progresse trimestre après trimestre"
+            + f", il reste très concentré: les 10 départements les plus dotés regroupent ~{top10_share_map:.1f}% du parc électrique observé. "
+              "Globalement, cette tendance est surtout menée par les grandes métropoles."
+        )
     st.caption("Question: Où sont les niveaux d’adoption les plus élevés/faibles ?")
 
     # --- Séries temporelles (historique des départements filtrés)
@@ -258,6 +310,40 @@ with tab_analysis:
         fig_trends.update_yaxes(title_text="%", row=2, col=1)
         fig_trends.update_layout(height=600, showlegend=True, margin=dict(l=10, r=10, t=60, b=10))
         st.plotly_chart(fig_trends, use_container_width=True)
+
+        # Paragraphe de lecture (analyse début → fin)
+        if len(temporal) >= 2:
+            start_label = str(temporal['LABEL'].iloc[0])
+            end_label   = str(temporal['LABEL'].iloc[-1])
+
+            rate_start = float(temporal['PART_ELECTRIQUE'].iloc[0])
+            rate_end   = float(temporal['PART_ELECTRIQUE'].iloc[-1])
+            delta_rate_pp = rate_end - rate_start
+
+            ev_start = float(temporal['NB_RECHARGEABLES_TOTAL'].iloc[0])
+            ev_end   = float(temporal['NB_RECHARGEABLES_TOTAL'].iloc[-1])
+            vp_start = float(temporal['NB_VP'].iloc[0])
+            vp_end   = float(temporal['NB_VP'].iloc[-1])
+
+            ev_abs   = ev_end - ev_start
+            vp_abs   = vp_end - vp_start
+            ev_pct   = (ev_end/ev_start - 1)*100 if ev_start > 0 else np.nan
+            vp_pct   = (vp_end/vp_start - 1)*100 if vp_start > 0 else np.nan
+
+            n_quarters = max(1, len(temporal) - 1)
+            n_years = n_quarters / 4.0
+            ev_cagr = (((ev_end/ev_start)**(1/n_years) - 1)*100) if (ev_start > 0 and n_years > 0) else np.nan
+
+            st.markdown(
+                f"Du {start_label} au {end_label}, le taux d’adoption passe de {rate_start:.2f}% à {rate_end:.2f}% "
+                f". Le nombre de véhicules électriques progresse de "
+                f"{ev_abs:+,.0f}, soit {'' if np.isnan(ev_pct) else f'{ev_pct:+.1f}%'}"
+                f". Sur la même période, le parc total évolue de {vp_abs:+,.0f}"
+            f"{'' if np.isnan(vp_pct) else f' ({vp_pct:+.1f}%)'}. "
+                f" En clair un progression est visible  sur toute la période, avec un gain cumulé de {delta_rate_pp:.2f} %."
+            )
+        else:
+            st.markdown("Série trop courte pour une analyse début → fin.")
     st.caption("Question: La dynamique s’accélère‑t‑elle ou se tasse‑t‑elle ?")
 
     # --- Variations T vs T‑1 (communes)
@@ -276,20 +362,21 @@ with tab_analysis:
 
         c1, c2 = st.columns(2)
         with c1:
+            st.caption("Communes avec la plus forte hausse du taux (Δ % vs T‑1).")
             fig_up = px.bar(up, x='DELTA_PP', y='LIBGEO', orientation='h',
-                            labels={'DELTA_PP':'Variation (pp)', 'LIBGEO':'Commune'},
-                            title='Top 10 hausses (pp vs T-1)',
+                            labels={'DELTA_PP':'Variation (%)', 'LIBGEO':'Commune'},
+                            title='Top 10 hausses (%) vs T-1',
                             color_discrete_sequence=['#2ca02c'])
             fig_up.update_xaxes(tickformat=".2f")
             st.plotly_chart(fig_up, use_container_width=True)
         with c2:
+            st.caption("Communes avec la plus forte baisse du taux (Δ % vs T‑1).")
             fig_down = px.bar(down, x='DELTA_PP', y='LIBGEO', orientation='h',
-                              labels={'DELTA_PP':'Variation (pp)', 'LIBGEO':'Commune'},
-                              title='Top 10 baisses (pp vs T-1)',
+                              labels={'DELTA_PP':'Variation (%)', 'LIBGEO':'Commune'},
+                              title='Top 10 baisses (%) vs T-1',
                               color_discrete_sequence=['#e45756'])
             fig_down.update_xaxes(tickformat=".2f")
             st.plotly_chart(fig_down, use_container_width=True)
-    st.caption("Question: Quels territoires tirent la croissance ce trimestre ?")
 
 # ============ 3) INSIGHTS ============
 with tab_insights:
@@ -373,7 +460,7 @@ with tab_insights:
 
     # --- Focus communes d’un département
     st.markdown("### 🌳 Communes d’un département")
-    st.caption("Choisis un département filtré pour détailler ses communes (barres classées ou treemap).")
+    st.caption("Choisis un département filtré pour détailler ses communes (barres classées).")
     eligible_depts = filtered_departements
     if not eligible_depts:
         st.info("Aucun département disponible avec les filtres courants.")
@@ -394,139 +481,132 @@ with tab_insights:
         if communes_dept.empty:
             st.warning(f"Aucune commune à afficher pour le département {selected_dept}.")
         else:
-            viz_type = st.radio("Vue", ["Barres classées", "Treemap"], index=0, horizontal=True, key="communes_view_radio")
-            if viz_type == "Barres classées":
-                colA, colB = st.columns(2)
-                with colA:
-                    sort_metric = st.selectbox("Trier par", ["Taux d'adoption (%)", "Véhicules électriques (nombre)"], index=0, key="communes_sort_metric")
-                with colB:
-                    top_n_communes = st.slider("Nombre de communes", 5, min(50, len(communes_dept)), min(20, len(communes_dept)), 5, key="communes_topn")
+            # Uniquement barres classées (treemap retiré)
+            colA, colB = st.columns(2)
+            with colA:
+                sort_metric = st.selectbox("Trier par", ["Taux d'adoption (%)", "Véhicules électriques (nombre)"], index=0, key="communes_sort_metric")
+            with colB:
+                top_n_communes = st.slider("Nombre de communes", 5, min(50, len(communes_dept)), min(20, len(communes_dept)), 5, key="communes_topn")
 
-                if sort_metric.startswith("Taux"):
-                    data_plot = communes_dept.sort_values("TAUX", ascending=False).head(top_n_communes)
-                    x_col = "TAUX"
-                else:
-                    data_plot = communes_dept.sort_values("EV", ascending=False).head(top_n_communes)
-                    x_col = "EV"
-
-                fig_bar = px.bar(
-                    data_plot, x=x_col, y="LIBGEO", orientation="h",
-                    color="TAUX", color_continuous_scale="RdYlGn",
-                    labels={"LIBGEO":"Commune","TAUX":"Taux d'adoption (%)","EV":"Véhicules électriques"},
-                    title=f"Département {selected_dept} — {sort_metric} (top {top_n_communes})"
-                )
-                if x_col == "TAUX":
-                    fig_bar.update_xaxes(tickformat=".2f", ticksuffix="%", title_text="Taux d'adoption (%)")
-                    fig_bar.update_traces(text=data_plot["TAUX"].map(lambda v: f"{v:.2f}%"), textposition="outside", cliponaxis=False)
-                else:
-                    fig_bar.update_xaxes(title_text="Véhicules électriques (nombre)")
-                    fig_bar.update_traces(text=data_plot["EV"].map(lambda v: f"{int(v):,}"), textposition="outside", cliponaxis=False)
-                fig_bar.update_layout(height=650, margin=dict(l=10, r=10, t=60, b=10))
-                st.plotly_chart(fig_bar, use_container_width=True)
-
+            if sort_metric.startswith("Taux"):
+                data_plot = communes_dept.sort_values("TAUX", ascending=False).head(top_n_communes)
+                x_col = "TAUX"
             else:
-                vals = communes_dept["TAUX"].dropna().to_numpy()
-                if vals.size >= 2:
-                    q5, q95 = np.nanpercentile(vals, [5, 95])
-                else:
-                    q5 = float(communes_dept["TAUX"].min() if len(communes_dept) else 0.0)
-                    q95 = float(communes_dept["TAUX"].max() if len(communes_dept) else 1.0)
-                if q5 == q95:
-                    q5, q95 = 0.0, max(1.0, float(q95))
+                data_plot = communes_dept.sort_values("EV", ascending=False).head(top_n_communes)
+                x_col = "EV"
 
-                fig_communes = px.treemap(
-                    communes_dept,
-                    path=[px.Constant(f"Département {selected_dept}"), "LIBGEO"],
-                    values="EV", color="TAUX",
-                    color_continuous_scale="RdYlGn",
-                    hover_data={"EV":":,", "PARC":":,", "TAUX":":.2f"},
-                    title=None
-                )
-                fig_communes.update_coloraxes(
-                    cmin=q5, cmax=q95,
-                    colorbar=dict(title="Taux d'adoption (%)", tickformat=".2f")
-                )
-                fig_communes.update_traces(
-                    hovertemplate="<b>%{label}</b><br>Taux: %{color:.2f}%<br>EV: %{value:,}<br>Parc: %{customdata[1]:,}<extra></extra>",
-                    textinfo="label"
-                )
-                fig_communes.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=650)
-                st.subheader(f"Département {selected_dept} — taille = EV, couleur = taux")
-                st.plotly_chart(fig_communes, use_container_width=True)
-
-    # --- Distribution & variabilité
-    st.markdown("### 📊 Distribution et variabilité (trimestre sélectionné)")
-    colA, colB = st.columns(2)
-    with colA:
-        communes_rates = df_current.groupby('LIBGEO', as_index=False)['PART_ELECTRIQUE'].mean()
-        if communes_rates.empty:
-            st.info("Pas de données pour afficher la distribution.")
-        else:
-            fig_hist = px.histogram(
-                communes_rates, x='PART_ELECTRIQUE', nbins=40, histnorm='percent',
-                labels={'PART_ELECTRIQUE':"Taux d'adoption (%)"},
-                title="Répartition des communes par taux d'adoption"
+            fig_bar = px.bar(
+                data_plot, x=x_col, y="LIBGEO", orientation="h",
+                color="TAUX", color_continuous_scale="RdYlGn",
+                labels={"LIBGEO":"Commune","TAUX":"Taux d'adoption (%)","EV":"Véhicules électriques"},
+                title=f"Département {selected_dept} — {sort_metric} (top {top_n_communes})"
             )
-            fig_hist.update_xaxes(ticksuffix="%", tickformat=".0f")
-            fig_hist.update_yaxes(title_text="Part des communes (%)")
-            fig_hist.add_vline(x=float(communes_rates['PART_ELECTRIQUE'].median()),
-                               line_dash='dash', line_color='orange', annotation_text='Médiane', annotation_position="top")
-            fig_hist.add_vline(x=float(communes_rates['PART_ELECTRIQUE'].mean()),
-                               line_dash='dot', line_color='cyan', annotation_text='Moyenne', annotation_position="top")
-            st.plotly_chart(fig_hist, use_container_width=True)
-
-    with colB:
-        dept_agg = df_current.groupby('DEPARTEMENT', as_index=False).agg(PARC=('NB_VP','sum'))
-        top_dept = dept_agg.sort_values('PARC', ascending=False)['DEPARTEMENT'].head(12).tolist()
-        communes_dept = (df_current[df_current['DEPARTEMENT'].isin(top_dept)]
-                         .groupby(['DEPARTEMENT','LIBGEO'], as_index=False)['PART_ELECTRIQUE'].mean())
-        if communes_dept.empty:
-            st.info("Pas assez de données pour la variabilité par département.")
-        else:
-            fig_box = px.box(communes_dept, x='DEPARTEMENT', y='PART_ELECTRIQUE',
-                             labels={'DEPARTEMENT':'Département', 'PART_ELECTRIQUE':"Taux d'adoption (%)"},
-                             points=False, title="Distribution des taux par département (top parc)")
-            fig_box.update_yaxes(ticksuffix="%", tickformat=".0f")
-            st.plotly_chart(fig_box, use_container_width=True)
-
-    # --- Lorenz (concentration)
-    st.markdown("### 📐 Concentration du parc électrique (Lorenz)")
-    ev_by_commune = df_current.groupby('LIBGEO', as_index=False)['NB_RECHARGEABLES_TOTAL'].sum()
-    if ev_by_commune['NB_RECHARGEABLES_TOTAL'].sum() > 0:
-        ev_sorted = ev_by_commune.sort_values('NB_RECHARGEABLES_TOTAL')
-        ev_sorted['cum_communes'] = np.arange(1, len(ev_sorted)+1)/len(ev_sorted)
-        ev_sorted['cum_ev'] = ev_sorted['NB_RECHARGEABLES_TOTAL'].cumsum()/ev_sorted['NB_RECHARGEABLES_TOTAL'].sum()
-        fig_lorenz = go.Figure()
-        fig_lorenz.add_trace(go.Scatter(x=ev_sorted['cum_communes'], y=ev_sorted['cum_ev'],
-                                        mode='lines', name='Lorenz', line=dict(color='#1f77b4', width=3)))
-        fig_lorenz.add_trace(go.Scatter(x=[0,1], y=[0,1], mode='lines', name='Égalité parfaite',
-                                        line=dict(color='gray', dash='dash')))
-        fig_lorenz.update_layout(
-            xaxis_title="Part des communes", yaxis_title="Part cumulée des véhicules électriques",
-            yaxis_tickformat=".0%", xaxis_tickformat=".0%", height=420, margin=dict(l=10,r=10,t=40,b=10)
-        )
-        st.plotly_chart(fig_lorenz, use_container_width=True)
-    else:
-        st.info("Aucune donnée EV pour tracer la courbe de Lorenz.")
+            if x_col == "TAUX":
+                fig_bar.update_xaxes(tickformat=".2f", ticksuffix="%", title_text="Taux d'adoption (%)")
+                fig_bar.update_traces(text=data_plot["TAUX"].map(lambda v: f"{v:.2f}%"), textposition="outside", cliponaxis=False)
+            else:
+                fig_bar.update_xaxes(title_text="Véhicules électriques (nombre)")
+                fig_bar.update_traces(text=data_plot["EV"].map(lambda v: f"{int(v):,}"), textposition="outside", cliponaxis=False)
+            fig_bar.update_layout(height=650, margin=dict(l=10, r=10, t=60, b=10))
+            st.plotly_chart(fig_bar, use_container_width=True)
 
 # ============ 4) IMPLICATIONS ============
 with tab_implications:
     st.markdown("## Implications")
-    st.caption("Traduction opérationnelle des constats—où agir et pourquoi.")
+    st.caption("Traduction opérationnelle des constats — où agir, avec quoi et pourquoi.")
 
-    recos = []
-    if delta_pp_value is not None and delta_pp_value > 0:
-        recos.append("Poursuivre l’effort: l’adoption progresse; renforcer les leviers efficaces (incitations, ZFE, IRVE).")
+    # Synthèse narrative (paragraphes)
+    # Résumés départementaux pour les comparaisons
+    _dept = df_current.groupby('DEPARTEMENT', as_index=False).agg(
+        EV=('NB_RECHARGEABLES_TOTAL', 'sum'),
+        VP=('NB_VP', 'sum')
+    )
+    if not _dept.empty:
+        _dept['TAUX'] = np.where(_dept['VP'] > 0, _dept['EV']/_dept['VP']*100, 0)
+        _lead = _dept.sort_values('TAUX', ascending=False).head(1)
+        _lag  = _dept.sort_values('TAUX', ascending=True).head(1)
+        _top10_share = (_dept.sort_values('EV', ascending=False).head(10)['EV'].sum() /
+                        max(1, _dept['EV'].sum())) * 100
     else:
-        recos.append("Relancer la dynamique: intensifier les incitations ciblées dans les zones stagnantes.")
-    if weighted_rate < 10 and total_vp > 0:
-        recos.append("Prioriser le déploiement des bornes dans les départements à fort parc VP mais faible taux.")
-    if df_current.empty is False:
-        recos.append("Mesure continue: suivre trimestriellement la dispersion des taux pour détecter élargissement/resserrement des écarts.")
-    if 'lead' in locals() and lead is not None and not isinstance(lead, type(None)) and not getattr(lead, 'empty', True):
-        recos.append(f"Diffuser les bonnes pratiques du leader {lead.iloc[0]['DEPARTEMENT']}.")
+        _lead = _lag = pd.DataFrame()
+        _top10_share = 0.0
 
-    st.markdown("\n".join([f"- {r}" for r in recos]))
+    # Paragraphe 1 — dynamique générale
+    if delta_pp_value is None:
+        p1 = f"Le taux d’adoption des véhicules électriques s’établit à {weighted_rate:.2f}% sur le périmètre sélectionné. Cette photographie renseigne le niveau atteint ce trimestre, sans comparaison directe au trimestre précédent."
+    elif delta_pp_value > 0:
+        p1 = f"Le taux d’adoption s’établit à {weighted_rate:.2f}% et progresse de {delta_pp_value:+.2f} point(s) de pourcentage par rapport au trimestre précédent. La dynamique est positive mais exige d’être entretenue pour se diffuser au‑delà des territoires déjà moteurs."
+    else:
+        p1 = f"Le taux d’adoption s’établit à {weighted_rate:.2f}% et recule de {delta_pp_value:+.2f} point(s) de pourcentage vs T‑1. Cette inflexion invite à un diagnostic des freins locaux et à un renforcement ciblé des leviers."
+
+    # Paragraphe 2 — disparités territoriales
+    if not _lead.empty and not _lag.empty:
+        p2 = (
+            f"Les disparités territoriales demeurent marquées : le département le plus avancé "
+            f"({_lead.iloc[0]['DEPARTEMENT']}) atteint {_lead.iloc[0]['TAUX']:.2f}%, tandis que le moins avancé "
+            f"({_lag.iloc[0]['DEPARTEMENT']}) reste à {_lag.iloc[0]['TAUX']:.2f}%. Par ailleurs, près de "
+            f"{_top10_share:.1f}% du parc électrique observé se concentre dans les dix départements les plus dotés, "
+            f"ce qui confirme un effet de polarisation autour des grands pôles urbains."
+        )
+    else:
+        p2 = "La répartition territoriale ne permet pas d’identifier clairement des leaders et des retardataires aux filtres actuels. La concentration du parc reste néanmoins à surveiller."
+
+    # Paragraphe 3 — implications opérationnelles
+    p3 = (
+        "En pratique, il convient de prioriser les départements combinant un parc de véhicules particuliers élevé et un taux d’adoption encore faible — ils offrent le meilleur potentiel d’impact à court terme. "
+        "Dans les territoires déjà avancéess, l’enjeu est plutôt de consolider la dynamique (qualité de service des bornes, disponibilité, tarification) tandis que les zones en décélération appellent une action corrective rapide. "
+        "Un suivi trimestriel des écarts permettra d’ajuster l’allocation des moyens et de diffuser les bonnes pratiques des départements leaders."
+    )
+
+    st.markdown(f"{p1}\n\n{p2}\n\n{p3}")
+
+    # --- Priorisation territoriale (graphique rétabli) ---
+    dept_curr = df_current.groupby('DEPARTEMENT', as_index=False).agg(
+        VP=('NB_VP','sum'),
+        EV=('NB_RECHARGEABLES_TOTAL','sum')
+    )
+    if not dept_curr.empty:
+        dept_curr['TAUX'] = np.where(dept_curr['VP'] > 0, dept_curr['EV']/dept_curr['VP']*100, 0)
+        dept_prev = df_prev.groupby('DEPARTEMENT', as_index=False).agg(
+            VP_PREV=('NB_VP','sum'),
+            EV_PREV=('NB_RECHARGEABLES_TOTAL','sum')
+        )
+        if not dept_prev.empty:
+            dept_prev['TAUX_PREV'] = np.where(dept_prev['VP_PREV'] > 0, dept_prev['EV_PREV']/dept_prev['VP_PREV']*100, np.nan)
+        prio = dept_curr.merge(
+            dept_prev[['DEPARTEMENT','TAUX_PREV']] if not dept_prev.empty else dept_curr[['DEPARTEMENT']],
+            on='DEPARTEMENT', how='left'
+        )
+        prio['DELTA_PP'] = prio['TAUX'] - prio['TAUX_PREV']
+
+        median_rate = float(prio['TAUX'].median())
+        p75_vp = float(prio['VP'].quantile(0.75))
+
+        st.markdown("### 📌 Priorisation territoriale (où agir en premier ?)")
+        st.caption("Matrice: fort parc (haut) × faible taux (gauche). Couleur = Δ % vs T‑1; taille = VE.")
+        fig_mat = px.scatter(
+            prio, x='TAUX', y='VP', size='EV', color='DELTA_PP',
+            color_continuous_scale='RdYlGn', hover_name='DEPARTEMENT',
+            hover_data={'TAUX':':.2f', 'VP':':,', 'EV':':,', 'DELTA_PP':':+.2f'},
+            labels={'TAUX':"Taux d'adoption (%)", 'VP':"Parc total (VP)", 'EV':'VE', 'DELTA_PP':'Δ %'},
+            title="Priorisation IRVE — Parc vs Taux (départements filtrés)"
+        )
+        fig_mat.add_vline(x=median_rate, line_dash='dash', line_color='orange')
+        fig_mat.add_hline(y=p75_vp, line_dash='dash', line_color='orange')
+        fig_mat.update_layout(height=520, margin=dict(l=10, r=10, t=60, b=10))
+        st.plotly_chart(fig_mat, use_container_width=True)
+
+        # Paragraphe d’interprétation
+        top_targets = prio[(prio['TAUX'] <= median_rate) & (prio['VP'] >= p75_vp)].copy()
+        top_targets = top_targets.sort_values(['VP','TAUX'], ascending=[False, True]).head(5)
+        if not top_targets.empty:
+            names = ", ".join(top_targets['DEPARTEMENT'].astype(str).tolist())
+            st.markdown(
+                f"Lecture: les départements à adresser en priorité sont {names}. "
+                "Ils cumulent un parc élevé et un taux sous la médiane; une intensification des IRVE et de l’accompagnement y devrait produire le plus d’impact immédiat."
+            )
+        else:
+            st.markdown("Avec les filtres actuels, aucun département ne ressort nettement comme priorité forte.")
 
 # ============ 5) DATA & METHODS ============
 with tab_data:
@@ -569,3 +649,4 @@ with tab_data:
         file_name=f"vehicules_electriques_{export_suffix}.csv",
         mime="text/csv"
     )
+
