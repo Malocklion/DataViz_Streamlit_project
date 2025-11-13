@@ -305,3 +305,5 @@ def render_analysis(
         st.markdown(
                 f"Ces variations trimestrielles mettent en lumière des dynamiques locales significatives. On voit que certaines communes connaissent des hausses notables du taux d’adoption, suggérant une adoption accélérée des véhicules électriques. En revanche, d’autres communes affichent des baisses, ce qui pourrait indiquer des défis spécifiques ou des ralentissements dans la transition. Ces disparités soulignent l’importance d’une analyse fine à l’échelle communale pour comprendre les facteurs sous-jacents influençant l’adoption des véhicules électriques. Bien que ce soit principalement les grandes villes qui mènent la transition, certaines petites communes montrent également des progrès remarquables, notamment du à la taille de leurs parc automobiles moins important que celui des villes."
             )
+
+

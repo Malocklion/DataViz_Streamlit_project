@@ -244,7 +244,16 @@ def render_insights(
         )
     configure_fig(fig_bar, height=650)
     st.plotly_chart(fig_bar, use_container_width=True)
+    st.caption(
+        "Le nombre de communes disponibles à l'affichage dépend des données fournies par data.gouv.fr "
+        "pour chaque trimestre. Certaines communes peuvent être absentes ou incomplètes en raison de "
+        "données manquantes ou de valeurs anomalement basses ou élevées selon les années."
+    )
     st.markdown(
-                f"Cette vue détaillée des communes du département {selected_dept} révèle des disparités significatives dans l’adoption des véhicules électriques. Certaines communes affichent des taux d’adoption élevés, indiquant une transition plus rapide vers des options de mobilité durable. En revanche, d’autres communes restent en retrait, ce qui pourrait être attribué à divers facteurs tels que l’infrastructure de recharge limitée, les préférences locales ou les contraintes économiques. Cette analyse souligne l’importance de cibler les efforts de sensibilisation et d’investissement dans les infrastructures pour accélérer l’adoption des véhicules électriques à l’échelle locale."
-            )
+        f"Cette vue détaillée des communes du département {selected_dept} révèle des disparités significatives dans l'adoption des véhicules électriques. "
+        "Certaines communes affichent des taux d'adoption élevés, indiquant une transition plus rapide vers des options de mobilité durable. "
+        "En revanche, d'autres communes restent en retrait, ce qui pourrait être attribué à divers facteurs tels que l'infrastructure de recharge limitée, "
+        "les préférences locales ou les contraintes économiques. Cette analyse souligne l'importance de cibler les efforts de sensibilisation et "
+        "d'investissement dans les infrastructures pour accélérer l'adoption des véhicules électriques à l'échelle locale."
+    )
 
