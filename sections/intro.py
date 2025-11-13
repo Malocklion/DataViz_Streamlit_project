@@ -7,7 +7,7 @@ def render_intro():
         """
 La transition écologique du secteur automobile est un enjeu majeur en France, 
 où le transport représente près de 30 % des émissions de gaz à effet de serre. 
-Depuis plusieurs années, les politiques publiques encouragent l’adoption de véhicules 
+Depuis plusieurs années, l'Etat encourage l’adoption de véhicules 
 à faibles émissions, notamment électriques et hybrides, à travers des bonus écologiques, 
 la mise en place de zones à faibles émissions (ZFE) et des investissements 
 dans les infrastructures de recharge.
@@ -43,7 +43,5 @@ Enfin, le pilotage public doit viser une allocation optimale des ressources : id
 à fort parc automobile mais à faible taux d’électrification, articuler les investissements IRVE et les 
 zones à faibles émissions (ZFE) avec les dispositifs d’aide, et assurer un suivi régulier de la dynamique 
 territoriale pour ajuster les politiques en temps réel.  
-
-👉 Ce tableau de bord a précisément pour ambition d’éclairer ces décisions stratégiques.
 """
     )

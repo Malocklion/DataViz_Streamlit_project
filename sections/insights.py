@@ -19,7 +19,7 @@ def render_insights(
     )
 
     # --- Top/Bottom communes
-    st.markdown("### 🏆 Top / 📉 Bottom des communes")
+    st.markdown("### Top / Bottom des communes au niveau National")
     st.caption("Comparer Top et Bottom avec la même métrique pour évaluer la dispersion.")
     c1, c2 = st.columns([1, 1])
     with c1:
@@ -49,7 +49,7 @@ def render_insights(
 
     colL, colR = st.columns(2)
     with colL:
-        st.markdown("#### 🏆 Top")
+        st.markdown("#### Top")
         top_communes = communes_grouped.nlargest(top_n, sort_col)
         fig_top = px.bar(
             top_communes,
@@ -87,7 +87,7 @@ def render_insights(
         st.plotly_chart(fig_top, use_container_width=True)
 
     with colR:
-        st.markdown("#### 📉 Bottom")
+        st.markdown("#### Bottom")
         if sort_col == "TAUX":
             bottom_pos = communes_grouped[communes_grouped["TAUX"] > 0].nsmallest(
                 top_n, "TAUX"
@@ -149,8 +149,9 @@ def render_insights(
         configure_fig(fig_bottom, height=420)
         st.plotly_chart(fig_bottom, use_container_width=True)
 
+
     # --- Focus communes d’un département
-    st.markdown("### 🌳 Communes d’un département")
+    st.markdown("### Communes d’un département")
     st.caption(
         "Choisis un département filtré pour détailler ses communes (barres classées)."
     )
@@ -243,3 +244,7 @@ def render_insights(
         )
     configure_fig(fig_bar, height=650)
     st.plotly_chart(fig_bar, use_container_width=True)
+    st.markdown(
+                f"Cette vue détaillée des communes du département {selected_dept} révèle des disparités significatives dans l’adoption des véhicules électriques. Certaines communes affichent des taux d’adoption élevés, indiquant une transition plus rapide vers des options de mobilité durable. En revanche, d’autres communes restent en retrait, ce qui pourrait être attribué à divers facteurs tels que l’infrastructure de recharge limitée, les préférences locales ou les contraintes économiques. Cette analyse souligne l’importance de cibler les efforts de sensibilisation et d’investissement dans les infrastructures pour accélérer l’adoption des véhicules électriques à l’échelle locale."
+            )
+

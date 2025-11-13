@@ -43,14 +43,14 @@ def render_implications(
     elif delta_pp_value > 0:
         p1 = (
             f"Le taux d’adoption s’établit à {weighted_rate:.2f}% et progresse de "
-            f"{delta_pp_value:+.2f} point(s) de pourcentage par rapport au trimestre précédent. "
+            f"{delta_pp_value:+.2f} % par rapport au trimestre précédent. "
             "La dynamique est positive mais exige d’être entretenue pour se diffuser au-delà "
             "des territoires déjà moteurs."
         )
     else:
         p1 = (
             f"Le taux d’adoption s’établit à {weighted_rate:.2f}% et recule de "
-            f"{delta_pp_value:+.2f} point(s) de pourcentage vs T-1. "
+            f"{delta_pp_value:+.2f} % par rapport au trimestre précédent. "
             "Cette inflexion invite à un diagnostic des freins locaux et à un renforcement ciblé des leviers."
         )
 
@@ -72,7 +72,7 @@ def render_implications(
     # Paragraphe 3 — implications opérationnelles
     p3 = (
         "En pratique, il convient de prioriser les départements combinant un parc de véhicules particuliers "
-        "élevé et un taux d’adoption encore faible — ils offrent le meilleur potentiel d’impact à court terme. "
+        "élevé et un taux d’adoption encore faible, ils offrent le meilleur potentiel d’impact à court terme. "
         "Dans les territoires déjà avancés, l’enjeu est plutôt de consolider la dynamique "
         "(qualité de service des bornes, disponibilité, tarification) tandis que les zones en décélération "
         "appellent une action corrective rapide. Un suivi trimestriel des écarts permettra d’ajuster "
@@ -81,72 +81,64 @@ def render_implications(
 
     st.markdown(f"{p1}\n\n{p2}\n\n{p3}")
 
-    # --- Priorisation territoriale (graphique) ---
-    dept_curr = df_current.groupby("DEPARTEMENT", as_index=False).agg(
-        VP=("NB_VP", "sum"),
-        EV=("NB_RECHARGEABLES_TOTAL", "sum"),
+    # --- Priorisation territoriale (graphique rétabli) ---
+    dept_curr = df_current.groupby('DEPARTEMENT', as_index=False).agg(
+        VP=('NB_VP','sum'),
+        EV=('NB_RECHARGEABLES_TOTAL','sum')
     )
-    if dept_curr.empty:
-        return
-
-    dept_curr["TAUX"] = np.where(dept_curr["VP"] > 0, dept_curr["EV"] / dept_curr["VP"] * 100, 0)
-    dept_prev = df_prev.groupby("DEPARTEMENT", as_index=False).agg(
-        VP_PREV=("NB_VP", "sum"),
-        EV_PREV=("NB_RECHARGEABLES_TOTAL", "sum"),
-    )
-    if not dept_prev.empty:
-        dept_prev["TAUX_PREV"] = np.where(
-            dept_prev["VP_PREV"] > 0,
-            dept_prev["EV_PREV"] / dept_prev["VP_PREV"] * 100,
-            np.nan,
+    if not dept_curr.empty:
+        dept_curr['TAUX'] = np.where(dept_curr['VP'] > 0, dept_curr['EV']/dept_curr['VP']*100, 0)
+        dept_prev = df_prev.groupby('DEPARTEMENT', as_index=False).agg(
+            VP_PREV=('NB_VP','sum'),
+            EV_PREV=('NB_RECHARGEABLES_TOTAL','sum')
         )
+        if not dept_prev.empty:
+            dept_prev['TAUX_PREV'] = np.where(dept_prev['VP_PREV'] > 0, dept_prev['EV_PREV']/dept_prev['VP_PREV']*100, np.nan)
+            prio = dept_curr.merge(dept_prev[['DEPARTEMENT','TAUX_PREV']], on='DEPARTEMENT', how='left')
+        else:
+            prio = dept_curr.copy()
+            prio['TAUX_PREV'] = np.nan
+        prio['DELTA_PP'] = prio['TAUX'] - prio['TAUX_PREV']
 
-    prio = dept_curr.merge(
-        dept_prev[["DEPARTEMENT", "TAUX_PREV"]] if not dept_prev.empty else dept_curr[["DEPARTEMENT"]],
-        on="DEPARTEMENT",
-        how="left",
-    )
-    prio["DELTA_PP"] = prio["TAUX"] - prio["TAUX_PREV"]
+        median_rate = float(prio['TAUX'].median())
+        p75_vp = float(prio['VP'].quantile(0.75))
 
-    median_rate = float(prio["TAUX"].median())
-    p75_vp = float(prio["VP"].quantile(0.75))
-
-    st.markdown("### 📌 Priorisation territoriale (où agir en premier ?)")
-    st.caption("Matrice: fort parc (haut) × faible taux (gauche). Couleur = Δ % vs T-1; taille = VE.")
-    fig_mat = px.scatter(
-        prio,
-        x="TAUX",
-        y="VP",
-        size="EV",
-        color="DELTA_PP",
-        color_continuous_scale="RdYlGn",
-        hover_name="DEPARTEMENT",
-        hover_data={"TAUX": ":.2f", "VP": ":,", "EV": ":,", "DELTA_PP": ":+.2f"},
-        labels={
-            "TAUX": "Taux d'adoption (%)",
-            "VP": "Parc total (VP)",
-            "EV": "VE",
-            "DELTA_PP": "Δ %",
-        },
-        title="Priorisation IRVE — Parc vs Taux (départements filtrés)",
-    )
-    fig_mat.add_vline(x=median_rate, line_dash="dash", line_color="orange")
-    fig_mat.add_hline(y=p75_vp, line_dash="dash", line_color="orange")
-    configure_fig(fig_mat, height=520)
-    st.plotly_chart(fig_mat, use_container_width=True)
-
-    top_targets = prio[
-        (prio["TAUX"] <= median_rate) & (prio["VP"] >= p75_vp)
-    ].copy()
-    top_targets = top_targets.sort_values(["VP", "TAUX"], ascending=[False, True]).head(5)
-    if not top_targets.empty:
-        names = ", ".join(top_targets["DEPARTEMENT"].astype(str).tolist())
-        st.markdown(
-            f"Lecture: les départements à adresser en priorité sont {names}. "
-            "Ils cumulent un parc élevé et un taux sous la médiane; une intensification des IRVE et de "
-            "l’accompagnement y devrait produire le plus d’impact immédiat."
+        st.markdown("### Priorisation territoriale (où agir en premier ?)")
+        st.caption("Matrice: fort parc (haut) × faible taux (gauche). Couleur = Δ % vs T-1; taille = VE.")
+        fig_mat = px.scatter(
+            prio,
+            x="TAUX",
+            y="VP",
+            size="EV",
+            color="DELTA_PP",
+            color_continuous_scale="RdYlGn",
+            hover_name="DEPARTEMENT",
+            hover_data={"TAUX": ":.2f", "VP": ":,", "EV": ":,", "DELTA_PP": ":+.2f"},
+            labels={
+                "TAUX": "Taux d'adoption (%)",
+                "VP": "Parc total (VP)",
+                "EV": "VE",
+                "DELTA_PP": "Δ %",
+            },
+            title="Priorisation IRVE — Parc vs Taux (départements filtrés)",
         )
-    else:
-        st.markdown(
-            "Avec les filtres actuels, aucun département ne ressort nettement comme priorité forte."
-        )
+        fig_mat.add_vline(x=median_rate, line_dash="dash", line_color="orange")
+        fig_mat.add_hline(y=p75_vp, line_dash="dash", line_color="orange")
+        configure_fig(fig_mat, height=520)
+        st.plotly_chart(fig_mat, use_container_width=True)
+
+        top_targets = prio[
+            (prio["TAUX"] <= median_rate) & (prio["VP"] >= p75_vp)
+        ].copy()
+        top_targets = top_targets.sort_values(["VP", "TAUX"], ascending=[False, True]).head(5)
+        if not top_targets.empty:
+            names = ", ".join(top_targets["DEPARTEMENT"].astype(str).tolist())
+            st.markdown(
+                f"Lecture: les départements à adresser en priorité sont {names}. "
+                "Ils cumulent un parc élevé et un taux sous la médiane; une intensification des IRVE et de "
+                "l’accompagnement y devrait produire le plus d’impact immédiat."
+            )
+        else:
+            st.markdown(
+                "Avec les filtres actuels, aucun département ne ressort nettement comme priorité forte."
+            )

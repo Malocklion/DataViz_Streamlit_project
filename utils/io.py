@@ -39,20 +39,43 @@ def load_and_clean_data(DATA_PATH: str):
     """
     Charge et nettoie le fichier data/voitures-par-commune-par-energie.csv
 
-    - garde ta logique d'origine (CODGEO, LIBGEO, NB_VP_RECHARGEABLES_EL, etc.)
-    - calcule NB_RECHARGEABLES_TOTAL et PART_ELECTRIQUE
-    - nettoie les libellés (Forains, ND, Non identifié, etc.)
+    Colonnes attendues (selon data.gouv.fr):
+    - codgeo_commune, libelle_commune, date_arrete
+    - nb_vp_rechargeables_el, nb_vp_rechargeables_hybrides_rechargeables, nb_vp
+
+    Étapes:
+    1. Lecture et parsing des dates
+    2. Conversion numérique (NB_VP > 0 obligatoire)
+    3. Calcul indicateurs (NB_RECHARGEABLES_TOTAL, PART_ELECTRIQUE)
+    4. Nettoyage des valeurs aberrantes:
+       - NB_VP > 0 (sinon pas de base de calcul)
+       - NB_RECHARGEABLES_TOTAL <= NB_VP (cohérence)
+       - PART_ELECTRIQUE entre 0 et 100%
+       - Suppression outliers extrêmes (> 99.5e percentile)
+    5. Exclusion libellés invalides (Forains, ND, etc.)
     """
     try:
         # Lecture
         df = pd.read_csv(
             DATA_PATH,
             sep=';',
-            dtype={'CODGEO': str, 'LIBGEO': str},
+            dtype={'codgeo_commune': str, 'libelle_commune': str},
             low_memory=False
         )
+        # Normalisation colonnes (minuscule -> MAJUSCULE uniforme)
+        df.columns = df.columns.str.strip().str.upper()
+
+        # Renommage pour compatibilité avec le code existant
+        rename_map = {
+            'CODGEO_COMMUNE': 'CODGEO',
+            'LIBELLE_COMMUNE': 'LIBGEO',
+            'DATE_ARRETE': 'DATE_ARRETE',
+            'NB_VP_RECHARGEABLES_EL': 'NB_VP_RECHARGEABLES_EL',
+            'NB_VP_RECHARGEABLES_HYBRIDES_RECHARGEABLES': 'NB_VP_RECHARGEABLES_GAZ',  # approximation
+            'NB_VP': 'NB_VP'
+        }
+        df = df.rename(columns=rename_map)
         df['CODGEO'] = df['CODGEO'].astype(str)
-        df.columns = df.columns.str.strip()
 
         # Dates -> trimestre
         df['DATE_ARRETE'] = pd.to_datetime(df['DATE_ARRETE'], errors='coerce')
@@ -60,12 +83,18 @@ def load_and_clean_data(DATA_PATH: str):
         df['ANNEE'] = df['DATE_ARRETE'].dt.year
         df['TRIMESTRE'] = df['DATE_ARRETE'].dt.to_period('Q')
 
-        # Numériques
+        # Colonnes numériques
         num_cols = ['NB_VP_RECHARGEABLES_EL', 'NB_VP_RECHARGEABLES_GAZ', 'NB_VP']
         for c in num_cols:
-            df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
+            else:
+                df[c] = 0
 
-        # Indicateurs
+        # 1) Exclusion des lignes avec parc VP nul ou négatif (pas de base de calcul)
+        df = df[df['NB_VP'] > 0].copy()
+
+        # 2) Calcul indicateurs
         df['NB_RECHARGEABLES_TOTAL'] = (
             df['NB_VP_RECHARGEABLES_EL'] + df['NB_VP_RECHARGEABLES_GAZ']
         )
@@ -75,6 +104,17 @@ def load_and_clean_data(DATA_PATH: str):
             0
         )
 
+        # 3) Nettoyage des incohérences: EV > VP impossible
+        df = df[df['NB_RECHARGEABLES_TOTAL'] <= df['NB_VP']].copy()
+
+        # 4) Taux entre 0 et 100%
+        df = df[(df['PART_ELECTRIQUE'] >= 0) & (df['PART_ELECTRIQUE'] <= 100)].copy()
+
+        # 5) Suppression outliers extrêmes (au‑delà du 99.5e percentile)
+        if len(df) > 0:
+            p995 = df['PART_ELECTRIQUE'].quantile(0.995)
+            df = df[df['PART_ELECTRIQUE'] <= p995].copy()
+
         # Département
         df['DEPARTEMENT'] = df['CODGEO'].apply(get_departement_code)
 
@@ -82,9 +122,7 @@ def load_and_clean_data(DATA_PATH: str):
         df['LIBGEO'] = df['LIBGEO'].astype(str).str.strip()
         df['LIBGEO_NORM'] = df['LIBGEO'].apply(_strip_accents_upper)
 
-        # Exclusions:
-        # - vides / NA
-        # - "ND", "PARIS ND", "FORAINS", "NON IDENTIFIE(E)", "NON RENSEIGNE(E)", "INCONNU", "SANS LIBELLE", etc.
+        # Exclusions: vides / NA / Forains / ND / etc.
         mask_valid = (
             df['LIBGEO_NORM'].str.len() > 0
         ) & (
@@ -94,9 +132,6 @@ def load_and_clean_data(DATA_PATH: str):
         )
 
         df = df[mask_valid].drop(columns=['LIBGEO_NORM']).copy()
-
-        # Garde des taux plausibles
-        df = df[(df['PART_ELECTRIQUE'] >= 0) & (df['PART_ELECTRIQUE'] <= 100)]
 
         return df
 

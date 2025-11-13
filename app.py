@@ -73,7 +73,7 @@ a, .markdown-text-container a { color: var(--primary); }
 # Titre
 # --------------------------
 st.markdown(
-    '<h1 class="main-header">🚗⚡ La Transition Énergétique Automobile en France</h1>',
+    '<h1 class="main-header">Transition Énergétique Automobile en France</h1>',
     unsafe_allow_html=True,
 )
 
@@ -90,26 +90,26 @@ try:
     df = get_data(DATA_PATH)
 except Exception as e:
     st.error(
-        f"❌ Impossible de charger les données ({e}). "
+        f"Impossible de charger les données ({e}). "
         "Vérifiez le fichier dans le dossier data/."
     )
     st.stop()
 
 if df is None or df.empty:
-    st.error("❌ Impossible de charger les données. Vérifiez le fichier dans le dossier data/.")
+    st.error("Impossible de charger les données. Vérifiez le fichier dans le dossier data/.")
     st.stop()
 
 # --------------------------
 # Filtres (sidebar)
 # --------------------------
-st.sidebar.markdown("## 🎛️ Filtres")
+st.sidebar.markdown("## Filtres")
 
 # Trimestre unique
 quarters_available = sorted(df["TRIMESTRE"].unique())
 quarter_label_map = {q: f"T{int(q.quarter)} {int(q.year)}" for q in quarters_available}
 quarter_labels = [quarter_label_map[q] for q in quarters_available]
 selected_quarter_label = st.sidebar.selectbox(
-    "📅 Trimestre d'analyse",
+    "Trimestre d'analyse",
     options=quarter_labels,
     index=len(quarter_labels) - 1,
     help="Analyse détaillée = trimestre choisi; les vues temporelles restent historiques.",
@@ -121,7 +121,7 @@ selected_period = label_to_period[selected_quarter_label]
 departements = sorted(df["DEPARTEMENT"].unique())
 departements_display = ["Tous"] + departements
 selected_departements = st.sidebar.multiselect(
-    "🗺️ Départements (codes INSEE)",
+    "Départements (codes INSEE)",
     options=departements_display,
     default=departements_display[0],
     help="Choisis un ou plusieurs départements. 'Tous' = France entière.",
@@ -143,7 +143,7 @@ else:
 
 # Seuil de parc minimal
 min_vehicles = st.sidebar.slider(
-    "🚗 Taille minimale du parc (VP)",
+    "Taille minimale du parc (VP)",
     min_value=0,
     max_value=int(df["NB_VP"].max()),
     value=100,
@@ -190,7 +190,7 @@ delta_pp_value = None if np.isnan(prev_rate) else (weighted_rate - prev_rate)
 # KPI globaux (photo du trimestre)
 # --------------------------
 st.markdown(
-    '<h2 class="section-header">📊 Indicateurs clés (photo du trimestre)</h2>',
+    '<h2 class="section-header">KPI par trimestre</h2>',
     unsafe_allow_html=True,
 )
 if df_current.empty:
@@ -199,26 +199,26 @@ else:
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.metric(
-            "🚗 Parc total (VP)",
+            " Parc total (VP)",
             f"{total_vp:,}",
             delta=(f"{(total_vp - prev_total_vp):+,}" if prev_total_vp else None),
         )
     with c2:
         st.metric(
-            "⚡ Véhicules électriques/rechargeables",
+            " Véhicules électriques/rechargeables",
             f"{total_ev:,}",
             delta=(f"{(total_ev - prev_total_ev):+,}" if prev_total_ev else None),
         )
     with c3:
         st.metric(
-            "📈 Taux d'adoption pondéré",
+            "Taux d'adoption pondéré",
             f"{weighted_rate:.2f}%",
             delta=(f"{delta_pp_value:+.2f} %" if delta_pp_value is not None else None),
         )
     with c4:
         prev_communes = int(df_prev["LIBGEO"].nunique()) if not df_prev.empty else 0
         st.metric(
-            "🏘️ Communes analysées",
+            " Communes analysées",
             f"{communes_count:,}",
             delta=(f"{(communes_count - prev_communes):+,}" if prev_communes else None),
         )
@@ -227,7 +227,7 @@ else:
 # Onglets narratifs
 # --------------------------
 tab_problem, tab_analysis, tab_insights, tab_implications, tab_data = st.tabs(
-    ["🧭 Problem", "🧪 Analysis", "💡 Insights", "🎯 Implications", "📚 Data & Methods"]
+    [" Problem", " Analysis", " Insights", " Implications", " Data & Methods"]
 )
 
 with tab_problem:

@@ -25,7 +25,7 @@ def render_analysis(
     )
 
     # --- Carte par département (photo du trimestre)
-    st.markdown("### 🗺️ Carte par département")
+    st.markdown("### Carte par département")
     map_metric = st.radio(
         "Métrique de couleur",
         options=["Taux d'adoption (%)", "Véhicules électriques (nombre)"],
@@ -126,7 +126,7 @@ def render_analysis(
         st.markdown(
             "Bien que le taux d’adoption progresse trimestre après trimestre"
             + f", il reste très concentré: les 10 départements les plus dotés regroupent ~{top10_share_map:.1f}% du parc électrique observé. "
-            "Globalement, cette tendance est surtout menée par les grandes métropoles."
+            "Globalement, cette tendance est surtout menée par les grandes métropoles. Cela souligne des disparités territoriales marquées dans l’adoption des véhicules électriques. Il faudrait approfondir l’analyse à l’échelle communale pour mieux comprendre ces dynamiques."
         )
     st.caption("Question: Où sont les niveaux d’adoption les plus élevés/faibles ?")
 
@@ -227,19 +227,33 @@ def render_analysis(
             )
 
             st.markdown(
-                f"Du {start_label} au {end_label}, le taux d’adoption passe de {rate_start:.2f}% à {rate_end:.2f}% "
-                f". Le nombre de véhicules électriques progresse de "
-                f"{ev_abs:+,.0f}, soit {'' if np.isnan(ev_pct) else f'{ev_pct:+.1f}%'}"
-                f". Sur la même période, le parc total évolue de {vp_abs:+,.0f}"
-                f"{'' if np.isnan(vp_pct) else f' ({vp_pct:+.1f}%)'}. "
-                f"En clair, une progression est visible sur toute la période, avec un gain cumulé de {delta_rate_pp:.2f} %."
+                f"Du {start_label} au {end_label}, le taux d'adoption passe de {rate_start:.2f}% à {rate_end:.2f}% "
+                f"(+{delta_rate_pp:.2f} pp). Le nombre de véhicules électriques progresse de {ev_abs:+,.0f}"
+                f"{'' if np.isnan(ev_pct) else f' ({ev_pct:+.1f}%)'}, tandis que le parc total évolue de {vp_abs:+,.0f}"
+                f"{'' if np.isnan(vp_pct) else f' ({vp_pct:+.1f}%)'}. En clair, une progression continue est visible sur toute la période."
             )
+            
+            # Observation spécifique : baisse du parc total 2024-2025 (extraire année depuis TRIMESTRE)
+            temporal['ANNEE'] = temporal['TRIMESTRE'].apply(lambda p: p.year)
+            recent = temporal[temporal['ANNEE'] >= 2024]
+            if len(recent) >= 2:
+                vp_2024_start = recent.iloc[0]['NB_VP']
+                vp_recent_end = recent.iloc[-1]['NB_VP']
+                vp_delta_recent = vp_recent_end - vp_2024_start
+                if vp_delta_recent < 0:
+                    st.markdown(
+                        f"**Observation clé** : depuis 2024, le parc total recule ({vp_delta_recent:+,.0f} véhicules). "
+                        f"Ce phénomène peut refléter une transition vers d'autres modes de transport (vélo, transports en commun, autopartage) "
+                        f"ou une évolution des usages (multi-motorisation en baisse, télétravail). "
+                        f"Même si le parc baisse, le nombre de véhicules électriques continue de progresser, "
+                        f"ce qui explique l'accélération du taux d'adoption."
+                    )
         else:
             st.markdown("Série trop courte pour une analyse début → fin.")
     st.caption("Question: La dynamique s’accélère-t-elle ou se tasse-t-elle ?")
 
     # --- Variations T vs T-1 (communes)
-    st.markdown("### 🚀 Variations trimestrielles (Top hausses / baisses)")
+    st.markdown("###  Variations trimestrielles (Top hausses / baisses)")
     df_prev_sel = df_prev.copy()
     curr_communes = df_current.groupby("LIBGEO", as_index=False).agg(
         TAUX=("PART_ELECTRIQUE", "mean")
@@ -287,3 +301,7 @@ def render_analysis(
             fig_down.update_xaxes(tickformat=".2f")
             configure_fig(fig_down, height=420)
             st.plotly_chart(fig_down, use_container_width=True)
+        
+        st.markdown(
+                f"Ces variations trimestrielles mettent en lumière des dynamiques locales significatives. On voit que certaines communes connaissent des hausses notables du taux d’adoption, suggérant une adoption accélérée des véhicules électriques. En revanche, d’autres communes affichent des baisses, ce qui pourrait indiquer des défis spécifiques ou des ralentissements dans la transition. Ces disparités soulignent l’importance d’une analyse fine à l’échelle communale pour comprendre les facteurs sous-jacents influençant l’adoption des véhicules électriques. Bien que ce soit principalement les grandes villes qui mènent la transition, certaines petites communes montrent également des progrès remarquables, notamment du à la taille de leurs parc automobiles moins important que celui des villes."
+            )
