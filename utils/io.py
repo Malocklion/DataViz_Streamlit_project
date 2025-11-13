@@ -1,3 +1,4 @@
+# utils/io.py
 import re
 import unicodedata
 import pandas as pd
@@ -34,8 +35,14 @@ BANNED_REGEX = re.compile(
     r")$"
 )
 
-@st.cache_data
 def load_and_clean_data(DATA_PATH: str):
+    """
+    Charge et nettoie le fichier data/voitures-par-commune-par-energie.csv
+
+    - garde ta logique d'origine (CODGEO, LIBGEO, NB_VP_RECHARGEABLES_EL, etc.)
+    - calcule NB_RECHARGEABLES_TOTAL et PART_ELECTRIQUE
+    - nettoie les libellés (Forains, ND, Non identifié, etc.)
+    """
     try:
         # Lecture
         df = pd.read_csv(
@@ -59,7 +66,9 @@ def load_and_clean_data(DATA_PATH: str):
             df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
 
         # Indicateurs
-        df['NB_RECHARGEABLES_TOTAL'] = df['NB_VP_RECHARGEABLES_EL'] + df['NB_VP_RECHARGEABLES_GAZ']
+        df['NB_RECHARGEABLES_TOTAL'] = (
+            df['NB_VP_RECHARGEABLES_EL'] + df['NB_VP_RECHARGEABLES_GAZ']
+        )
         df['PART_ELECTRIQUE'] = np.where(
             df['NB_VP'] > 0,
             df['NB_RECHARGEABLES_TOTAL'] / df['NB_VP'] * 100,
@@ -90,6 +99,7 @@ def load_and_clean_data(DATA_PATH: str):
         df = df[(df['PART_ELECTRIQUE'] >= 0) & (df['PART_ELECTRIQUE'] <= 100)]
 
         return df
+
     except Exception as e:
         st.error(f"Erreur lors du chargement des données : {e}")
         return None
