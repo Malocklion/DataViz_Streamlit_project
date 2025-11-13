@@ -131,7 +131,7 @@ def render_analysis(
     st.caption("Question: Où sont les niveaux d’adoption les plus élevés/faibles ?")
 
     # --- Séries temporelles (historique des départements filtrés)
-    st.markdown("### 📈 Évolution trimestrielle")
+    st.markdown("### Évolution trimestrielle")
     df_hist = df[
         (df["DEPARTEMENT"].isin(filtered_departements)) & (df["NB_VP"] >= min_vehicles)
     ].copy()
