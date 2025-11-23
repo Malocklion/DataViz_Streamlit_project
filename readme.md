@@ -1,5 +1,9 @@
 # Transition Énergétique Automobile — France (Streamlit)
 
+ **Application en ligne** : [https://malocklion-dataviz-streamlit-project-app-sy1lge.streamlit.app/](https://malocklion-dataviz-streamlit-project-app-sy1lge.streamlit.app/)
+
+---
+
 ## 1. Story
 - Problème: Où et à quel rythme les véhicules électriques s’adoptent-ils en France ?
 - Approche: Données trimestrielles publiques (Data.gouv), nettoyage, KPI pondérés, carte, classements, tendances.
