@@ -43,7 +43,7 @@ streamlit run app.py
 - Trends: évolution trimestrielle, hausses/baisses, distributions, variabilité, Lorenz.
 - Export: CSV des filtres courants.
 
-## 8. Démo vidéo (2–4 min)
+## 6. Démo vidéo (2–4 min)
 - Flow suggéré:
   1) Story (contexte, question, KPI).
   2) Explore (carte → Top/Bottom → commune focus).
