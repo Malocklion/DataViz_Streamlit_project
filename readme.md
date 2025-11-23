@@ -35,7 +35,7 @@ streamlit run app.py
 ## 4. Structure
 - app.py: interface Streamlit (onglets Story / Explore / Trends / Data).
 - utils.py: chargement + nettoyage, cache.
-- data/: (optionnel) dépôt CSV si hors-ligne, sinon lien officiel.
+- data: https://www.data.gouv.fr/datasets/voitures-particulieres-immatriculees-par-commune-et-par-type-de-recharge-jeu-de-donnees-aaadata/
 
 ## 5. Interactions
 - Filtres: trimestre, départements (avec option DOM‑TOM), taille minimale du parc.
@@ -43,11 +43,7 @@ streamlit run app.py
 - Trends: évolution trimestrielle, hausses/baisses, distributions, variabilité, Lorenz.
 - Export: CSV des filtres courants.
 
-## 6. Licence et attribution
-- Données: voir licence sur la page Data.gouv.
-- Code: MIT (par défaut) — ajuster si besoin.
-
-## 7. Démo vidéo (2–4 min)
+## 8. Démo vidéo (2–4 min)
 - Flow suggéré:
   1) Story (contexte, question, KPI).
   2) Explore (carte → Top/Bottom → commune focus).
